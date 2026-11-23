@@ -64,6 +64,7 @@ svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stro
 #scroller{flex:1;overflow:auto;position:relative}
 .page{max-width:900px;margin:0 auto;padding:48px 72px 160px}
 .page.wide{max-width:1200px}
+@media (min-width:701px){.page.wide{padding-left:32px;padding-right:32px}}
 #taskPanel{position:absolute;top:0;right:0;bottom:0;width:min(600px,52vw);background:var(--bg);box-shadow:-1px 0 0 var(--bd),-12px 0 32px rgba(16,24,40,.12);display:flex;flex-direction:column;transform:translateX(105%);transition:transform .22s ease;z-index:20}
 #taskPanel.open{transform:none}
 .tp-bar{height:48px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--bd);color:var(--text2)}
@@ -115,7 +116,7 @@ button.pill{cursor:pointer}button.pill:hover{filter:brightness(.96)}
 .empty-note{color:var(--text3);padding:10px 8px}
 /* kanban */
 .board{display:flex;gap:14px;align-items:flex-start;overflow-x:auto;padding-bottom:20px}
-.col{width:272px;flex:none;background:var(--soft);border-radius:12px;border-top:3px solid var(--p-gray-fg);padding:10px 8px 10px;min-height:120px}
+.col{flex:0 1 272px;min-width:220px;background:var(--soft);border-radius:12px;border-top:3px solid var(--p-gray-fg);padding:10px 8px 10px;min-height:120px}
 .col.doing{border-top-color:var(--doing)}.col.done{border-top-color:var(--done)}
 .col.over{outline:2px dashed var(--accent)}
 .col-h{display:flex;align-items:center;gap:8px;padding:0 4px 8px}.col-h .sp{flex:1}.col-h .n{color:var(--text3);font-size:12px}
@@ -389,8 +390,13 @@ const IDB={db:null,
   async tx(s,m,f){const db=await this.open();return new Promise((res,rej)=>{const t=db.transaction(s,m),st=t.objectStore(s);const q=f(st);t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})},
   get(s,k){return this.tx(s,'readonly',st=>st.get(k))},set(s,k,v){return this.tx(s,'readwrite',st=>st.put(v,k))},del(s,k){return this.tx(s,'readwrite',st=>st.delete(k))},
   keys(s){return this.tx(s,'readonly',st=>st.getAllKeys())}};
-const kvGet=async k=>{try{return await IDB.get('kv',k)}catch(e){return undefined}};
-const kvSet=async(k,v)=>{try{await IDB.set('kv',k,v)}catch(e){}};
+/* mémoire propre à CE fichier : tous les fichiers ouverts en file:/// partagent le même stockage navigateur,
+   donc l'emplacement choisi (mode, dossier), la copie de secours et la date de sauvegarde sont rangés sous le chemin du fichier.
+   Une copie du HTML placée ailleurs ne se reconnecte jamais seule : elle affiche l'écran de bienvenue. */
+const HERE=(()=>{try{return location.protocol==='file:'?decodeURIComponent(location.pathname):location.origin+location.pathname}catch(e){return ''}})();
+const kvKey=k=>k+'|'+HERE;
+const kvGet=async k=>{try{return await IDB.get('kv',kvKey(k))}catch(e){return undefined}};
+const kvSet=async(k,v)=>{try{await IDB.set('kv',kvKey(k),v)}catch(e){}};
 /* ---------- snapshots retention ---------- */
 function snapTs(name){const m=/(\d{4})-(\d\d)-(\d\d)_(\d\d)-(\d\d)-(\d\d)/.exec(name);return m?new Date(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6]).getTime():0}
 function pruneList(names){ // names des sauvegardes automatiques ; renvoie celles à supprimer
@@ -527,7 +533,7 @@ function welcomeScreen(opts){
         h('button',{class:'btn pri',onclick:async()=>{try{if(await opts.handle.requestPermission({mode:'readwrite'})==='granted')fin({fs:opts.handle})}catch(e){}}},'Autoriser'),' ',
         h('button',{class:'btn',onclick:()=>welcomeScreen().then(fin)},'Choisir un autre emplacement'));
     }else{
-      card.append(h('h2',null,'Bienvenue dans '+APP_NAME),h('p',null,'Où voulez-vous garder vos données ?'));
+      card.append(h('h2',null,'Bienvenue dans '+APP_NAME),h('p',null,'Où voulez-vous garder vos données ?'),h('p',{style:'font-size:12px;color:var(--text3);margin-top:-6px'},'Ce choix est mémorisé pour ce fichier uniquement : une copie placée ailleurs vous le redemandera.'));
       const bf=h('button',{class:'wopt',disabled:!hasFS,onclick:async()=>{try{fin({fs:await pickFolder()})}catch(e){}}},h('b',null,'Dans un dossier de mon ordinateur'),h('span',null,hasFS?'Recommandé : choisissez un dossier OneDrive pour garder vos données synchronisées. Si le dossier contient déjà des données, elles seront ouvertes.':'Non pris en charge par ce navigateur (utilisez Edge ou Chrome).'));
       const bb=h('button',{class:'wopt',onclick:()=>fin({idb:true})},h('b',null,'Dans ce navigateur'),h('span',null,'Simple et immédiat, mais les données restent liées à ce navigateur.'));
       card.append(bf,bb);
@@ -855,8 +861,21 @@ function createEditor(host,o){
     if(a&&(e.ctrlKey||e.metaKey)){e.preventDefault();window.open(a.href,'_blank','noopener');return}
     const td=e.target.closest&&e.target.closest('.todo');
     if(td&&ed.contains(td)&&e.offsetX!==undefined){const rc=td.getBoundingClientRect();if(e.clientX-rc.left<26&&e.clientX>=rc.left&&!isEmptyLine(td)){td.setAttribute('data-checked',td.getAttribute('data-checked')==='true'?'false':'true');commit();changed(true);if(o.onToggle)o.onToggle();return}}
-    if(e.target===ed){const last=ed.lastElementChild;if(!last||!(last.tagName==='P'&&isEmptyLine(last))){const p=mk('p');ed.append(p);placeCaret(p);commit();changed(true)}else placeCaret(last);keepCaretVisible(ed)}
+    if(e.target===ed){clickInGap(e.clientX,e.clientY);keepCaretVisible(ed)}
   });
+  /* clic dans une zone vide de l'éditeur (à côté d'une image, entre deux blocs, sous le dernier bloc) */
+  const noEdit=b=>b&&(b.tagName==='HR'||b.classList.contains('imgw')||b.getAttribute('contenteditable')==='false');
+  function lineBelow(b){const n=b.nextElementSibling;if(n&&n.tagName==='P'&&isEmptyLine(n)){placeCaret(n);return}const p=mk('p');b.after(p);placeCaret(p);commit();changed(true)}
+  function caretAt(b,x,y){const r=b.getBoundingClientRect();x=Math.max(r.left+1,Math.min(x,r.right-1));y=Math.max(r.top+1,Math.min(y,r.bottom-1));let rg=null;
+    if(document.caretRangeFromPoint)rg=document.caretRangeFromPoint(x,y);else if(document.caretPositionFromPoint){const cp=document.caretPositionFromPoint(x,y);if(cp){rg=document.createRange();rg.setStart(cp.offsetNode,cp.offset);rg.collapse(true)}}
+    if(rg&&b.contains(rg.startContainer)){const s=getSelection();s.removeAllRanges();s.addRange(rg)}else placeCaret(lineIn(b)||b,true)}
+  function clickInGap(x,y){
+    const ch=Array.from(ed.children).filter(c=>!c.classList.contains('dropline'));let prev=null,hit=null;
+    for(const c of ch){const r=c.getBoundingClientRect();if(y<r.top)break;prev=c;if(y<=r.bottom){hit=c;break}}
+    if(!prev){const f=ch[0];if(f&&!noEdit(f))placeCaret(lineIn(f)||f,false);else if(f){const p=mk('p');f.before(p);placeCaret(p);commit();changed(true)}return}
+    if(!hit&&prev===ch[ch.length-1]){const last=prev;if(last.tagName==='P'&&isEmptyLine(last))placeCaret(last);else{const p=mk('p');ed.append(p);placeCaret(p);commit();changed(true)}return}
+    const b=hit||prev;if(noEdit(b))lineBelow(b);else caretAt(b,x,hit?y:b.getBoundingClientRect().bottom-1);
+  }
   ed.addEventListener('keyup',e=>{if(/^Arrow|^Home|^End|^Page/.test(e.key)){keepCaretVisible(ed);if(E.updMention)E.updMention();updateSlash()}});
   ed.addEventListener('blur',()=>{commit();changed(true);updMarks()});
   ed.addEventListener('focus',()=>{updEmpty();updMarks()});
@@ -1244,8 +1263,8 @@ function viewHome(){
 function progressBar(s){const d=s.total?s.done/s.total*100:0,g=s.total?s.doing/s.total*100:0;return h('div',{class:'progress',title:s.done+' terminée(s), '+s.doing+' en cours sur '+s.total},h('i',{class:'pd',style:'width:'+d+'%'}),h('i',{class:'pg',style:'width:'+g+'%'}))}
 /* ---------- page projet ---------- */
 function viewProject(p,v){
-  const pg=h('div',{class:'page'+(v.tab==='board'?' wide':'')});
   v.tab=v.tab||'board';
+  const pg=h('div',{class:'page'+(v.tab==='board'?' wide':'')});
   pg.append(h('div',{class:'pg-icon',onclick:e=>pickEmoji(e.currentTarget,x=>{p.icon=x;save();scheduleRender()})},p.icon));
   const desc=editable('div','pg-desc',p.description,'Ajouter une description…',{input:t=>{p.description=t;save()},blur:()=>scheduleRender()});
   pg.append(editable('h1','pg-title',p.title,'Projet sans titre',{input:t=>{p.title=t;save()},enter:()=>desc.focus(),blur:()=>scheduleRender()}),desc);
