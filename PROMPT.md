@@ -79,4 +79,11 @@ Barre : fermer, « Créée le … », « … » (Dupliquer, Supprimer). Titre (E
 - Démarrage jamais bloqué par des données anciennes ; aucune erreur console.
 
 ## 13. Livrable
-Écris le fichier `monespace.html` dans ce dossier (un vrai fichier HTML sur le disque, pas seulement un artefact ni un affichage dans la conversation). Ne publie un artefact que si on te le demande.
+Écris le fichier `monespace.html` dans ce dossier (un vrai fichier HTML sur le disque).
+Ensuite, publie-le comme artefact : appelle l'outil Artifact avec `file_path` = `monespace.html`
+et `icon` = « workspace ». Avant, charge les compétences `artifact-design` et
+`artifact-capabilities`, et déclare les capacités `db`, `assets`, `downloads` et `user`.
+Ne modifie pas le code pour l'adapter à l'artefact, sauf pour corriger une erreur :
+le mode en ligne s'active tout seul via `window.claude.use`.
+L'artefact reste privé : pas de partage, pas d'épinglage. Termine en donnant le lien.
+Corrige le code si la publication révèle une erreur.
